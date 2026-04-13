@@ -11,11 +11,13 @@ mpHands = mp.solutions.hands
 hands = mpHands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7, min_tracking_confidence=0.7)
 mpDraw = mp.solutions.drawing_utils
 
-pTime = 0
+pTime = time.time()  # Fix bug 1: init to now, not 0, avoids misleading FPS on first frame
 
 # Process only every nth frame for better performance
 frame_skip = 2
 frame_count = 0
+last_results = None  # Fix bug 2: cache results to redraw on skipped frames
+fps = 0             # Fix bug 3: track FPS separately, only update on processed frames
 
 while True:
     success, img = cap.read()
@@ -26,17 +28,20 @@ while True:
     # Only process every nth frame
     if frame_count % frame_skip == 0:
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = hands.process(imgRGB)
-        
-        # Draw landmarks if hand is detected
-        if results.multi_hand_landmarks:
-            for handLms in results.multi_hand_landmarks:
-                mpDraw.draw_landmarks(img, handLms, mpHands.HAND_CONNECTIONS)
-    
-    # Calculate FPS (only every nth frame to save processing)
-    cTime = time.time()
-    fps = 1 / (cTime - pTime)
-    pTime = cTime
+        last_results = hands.process(imgRGB)
+
+        # Fix bug 3: update FPS only when actually processing frames
+        cTime = time.time()
+        elapsed = cTime - pTime
+        if elapsed > 0:  # Fix bug 1: guard against zero division
+            fps = 1 / elapsed
+        pTime = cTime
+
+    # Fix bug 2: always draw from cached results so landmarks don't flicker on skipped frames
+    if last_results and last_results.multi_hand_landmarks:
+        for handLms in last_results.multi_hand_landmarks:
+            mpDraw.draw_landmarks(img, handLms, mpHands.HAND_CONNECTIONS)
+
     cv2.putText(img, f'FPS: {int(fps)}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
     # Display the video feed
